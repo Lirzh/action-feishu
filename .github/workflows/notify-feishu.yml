@@ -45,24 +45,20 @@ jobs:
             EVENT_URL=$ISSUE_URL
             LABELS="${ISSUE_LABELS:-无}"
             DETAIL_CONTENT="标题：$ISSUE_TITLE${NEWLINE}标签：$LABELS"
-            
-            # 仅在创建 Issue (opened) 时解析 ### 功能类别/概述/优先级
-            if [ "$EVENT_ACTION" = "opened" ]; then
-              # 解析 ### 功能类别
-              CATEGORY=$(echo "$ISSUE_BODY" | awk '/### 功能类别/{f=1;next} /### /{f=0} f' | sed '/^$/d' | tr -d '\r' | head -10)
-              CATEGORY="${CATEGORY:-未填写}"
+            # 解析 ### 功能类别
+            CATEGORY=$(echo "$ISSUE_BODY" | awk '/### 功能类别/{f=1;next} /### /{f=0} f' | sed '/^$/d' | tr -d '\r' | head -10)
+            CATEGORY="${CATEGORY:-未填写}"
               
-              # 解析 ### 功能概述
-              SUMMARY=$(echo "$ISSUE_BODY" | awk '/### 功能概述/{f=1;next} /### /{f=0} f' | sed '/^$/d' | tr -d '\r' | head -10)
-              SUMMARY="${SUMMARY:-未填写}"
+            # 解析 ### 功能概述
+            SUMMARY=$(echo "$ISSUE_BODY" | awk '/### 功能概述/{f=1;next} /### /{f=0} f' | sed '/^$/d' | tr -d '\r' | head -10)
+            SUMMARY="${SUMMARY:-未填写}"
               
-              # 解析 ### 优先级
-              PRIORITY=$(echo "$ISSUE_BODY" | awk '/### 优先级/{f=1;next} /### /{f=0} f' | sed '/^$/d' | tr -d '\r' | head -10)
-              PRIORITY="${PRIORITY:-未填写}"
+            # 解析 ### 优先级
+            PRIORITY=$(echo "$ISSUE_BODY" | awk '/### 优先级/{f=1;next} /### /{f=0} f' | sed '/^$/d' | tr -d '\r' | head -10)
+            PRIORITY="${PRIORITY:-未填写}"
               
-              # 拼接解析结果到详情中
-              DETAIL_CONTENT="${DETAIL_CONTENT}${NEWLINE}🔹 功能类别：$CATEGORY${NEWLINE}🔹 功能概述：$SUMMARY${NEWLINE}🔹 优先级：$PRIORITY"
-            fi
+            # 拼接解析结果到详情中
+            DETAIL_CONTENT="${DETAIL_CONTENT}${NEWLINE}🔹 功能类别：$CATEGORY${NEWLINE}🔹 功能概述：$SUMMARY${NEWLINE}🔹 优先级：$PRIORITY"
           elif [ "$EVENT_NAME" = "discussion" ]; then
             EVENT_URL=$DISCUSSION_URL
           fi
