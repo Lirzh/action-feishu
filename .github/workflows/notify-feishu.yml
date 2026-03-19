@@ -1,6 +1,5 @@
 name: Notify Feishu on Events
 
-# 触发条件：监听 Issues、Discussions、Pull Requests 的所有关键事件
 on:
   issues:
     types: [opened, edited, closed, reopened, assigned, unassigned, labeled, unlabeled]
@@ -15,35 +14,48 @@ jobs:
   notify-feishu:
     runs-on: ubuntu-latest
     steps:
-      # 检出仓库（可选，若无需读取仓库文件可省略）
       - name: Checkout code
         uses: actions/checkout@v4
 
-      # 构建飞书消息并发送
       - name: Send notification to Feishu
         env:
-          # 飞书 Webhook 地址（需在仓库设置 -> Secrets 中配置 FEISHU_WEBHOOK_URL）
           FEISHU_WEBHOOK_URL: ${{ secrets.FEISHU_WEBHOOK_URL }}
-          # 获取事件相关信息（GitHub 内置环境变量）
           EVENT_NAME: ${{ github.event_name }}
           EVENT_ACTION: ${{ github.event.action }}
           REPOSITORY: ${{ github.repository }}
           ACTOR: ${{ github.actor }}
-          EVENT_PAYLOAD: ${{ toJSON(github.event) }}
+          # 提取关键链接（避免完整载荷）
+          ISSUE_URL: ${{ github.event.issue.html_url || 'N/A' }}
+          PR_URL: ${{ github.event.pull_request.html_url || 'N/A' }}
+          DISCUSSION_URL: ${{ github.event.discussion.html_url || 'N/A' }}
         run: |
-          # 构建飞书消息体（适配飞书群机器人 Webhook 格式）
-          MESSAGE=$(cat << EOF
-          {
+          # 1. 确定事件链接（优先级：PR > Issue > Discussion）
+          EVENT_URL=$PR_URL
+          if [ "$EVENT_URL" = "N/A" ]; then
+            EVENT_URL=$ISSUE_URL
+          fi
+          if [ "$EVENT_URL" = "N/A" ]; then
+            EVENT_URL=$DISCUSSION_URL
+          fi
+
+          # 2. 构建合法的飞书文本消息（转义特殊字符）
+          MESSAGE_CONTENT=$(printf "【GitHub 事件通知】\n仓库: %s\n事件类型: %s\n操作: %s\n触发人: %s\n事件链接: %s" \
+            "$REPOSITORY" "$EVENT_NAME" "$EVENT_ACTION" "$ACTOR" "$EVENT_URL")
+          
+          # 3. 构建符合飞书要求的 JSON 消息体（用 jq 确保格式合法）
+          MESSAGE=$(jq -n --arg content "$MESSAGE_CONTENT" '{
             "msg_type": "text",
             "content": {
-              "text": "【GitHub 事件通知】\n仓库: $REPOSITORY\n事件类型: $EVENT_NAME\n操作: $EVENT_ACTION\n触发人: $ACTOR\n事件详情: $EVENT_PAYLOAD"
+              "text": $content
             }
-          }
-          EOF
-          )
+          }')
 
-          # 发送 POST 请求到飞书 Webhook
+          # 4. 发送请求到飞书 Webhook
           curl -X POST \
             -H "Content-Type: application/json" \
             -d "$MESSAGE" \
             "$FEISHU_WEBHOOK_URL"
+        # 安装 jq 工具（用于合法生成 JSON，避免特殊字符问题）
+        shell: bash
+        before_install:
+          - sudo apt-get update && sudo apt-get install -y jq
