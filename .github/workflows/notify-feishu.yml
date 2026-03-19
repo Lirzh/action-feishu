@@ -1,56 +1,82 @@
-name: Notify Feishu on Issue Created
+name: Notify Feishu on Events
 
+# 仅监听核心事件，减少重复触发
 on:
   issues:
-    types: [opened]
+    types: [opened, closed, reopened]
+  discussion:
+    types: [created, closed, reopened]
+  pull_request:
+    types: [opened, closed, reopened]
+  pull_request_review:
+    types: [submitted]
 
 jobs:
   notify-feishu:
     runs-on: ubuntu-latest
     steps:
-      - name: Send to Feishu
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Send notification to Feishu
         env:
           FEISHU_WEBHOOK_URL: ${{ secrets.FEISHU_WEBHOOK_URL }}
+          EVENT_NAME: ${{ github.event_name }}
+          EVENT_ACTION: ${{ github.event.action }}
           REPOSITORY: ${{ github.repository }}
           ACTOR: ${{ github.actor }}
-          ISSUE_URL: ${{ github.event.issue.html_url }}
-          ISSUE_TITLE: ${{ github.event.issue.title }}
-          ISSUE_BODY: ${{ github.event.issue.body }}
+          # 新增 Issue Body 字段，用于解析模块
+          ISSUE_URL: ${{ github.event.issue.html_url || 'N/A' }}
+          ISSUE_TITLE: ${{ github.event.issue.title || 'N/A' }}
+          ISSUE_BODY: ${{ github.event.issue.body || '' }}
           ISSUE_LABELS: ${{ join(github.event.issue.labels.*.name, ', ') }}
+          PR_URL: ${{ github.event.pull_request.html_url || 'N/A' }}
+          DISCUSSION_URL: ${{ github.event.discussion.html_url || 'N/A' }}
         run: |
-          # 换行符（最稳定写法）
-          NL=$'\n'
+          # 定义通用换行符（解决之前的替换错误）
+          NEWLINE=$'\n'
+          
+          # 初始化变量
+          EVENT_URL=$PR_URL
+          DETAIL_CONTENT=""
+          
+          # 处理 Issues 事件
+          if [ "$EVENT_NAME" = "issues" ]; then
+            EVENT_URL=$ISSUE_URL
+            LABELS="${ISSUE_LABELS:-无}"
+            DETAIL_CONTENT="标题：$ISSUE_TITLE${NEWLINE}标签：$LABELS"
+            
+            # 仅在创建 Issue (opened) 时解析 ### 功能类别/概述/优先级
+            if [ "$EVENT_ACTION" = "opened" ]; then
+              # 解析 ### 功能类别
+              CATEGORY=$(echo "$ISSUE_BODY" | awk '/### 功能类别/{f=1;next} /### /{f=0} f' | sed '/^$/d' | tr -d '\r' | head -10)
+              CATEGORY="${CATEGORY:-未填写}"
+              
+              # 解析 ### 功能概述
+              SUMMARY=$(echo "$ISSUE_BODY" | awk '/### 功能概述/{f=1;next} /### /{f=0} f' | sed '/^$/d' | tr -d '\r' | head -10)
+              SUMMARY="${SUMMARY:-未填写}"
+              
+              # 解析 ### 优先级
+              PRIORITY=$(echo "$ISSUE_BODY" | awk '/### 优先级/{f=1;next} /### /{f=0} f' | sed '/^$/d' | tr -d '\r' | head -10)
+              PRIORITY="${PRIORITY:-未填写}"
+              
+              # 拼接解析结果到详情中
+              DETAIL_CONTENT="${DETAIL_CONTENT}${NEWLINE}🔹 功能类别：$CATEGORY${NEWLINE}🔹 功能概述：$SUMMARY${NEWLINE}🔹 优先级：$PRIORITY"
+            fi
+          elif [ "$EVENT_NAME" = "discussion" ]; then
+            EVENT_URL=$DISCUSSION_URL
+          fi
 
-          # 标签
-          LABELS="${ISSUE_LABELS:-无}"
+          # 构建消息内容
+          MESSAGE_CONTENT="【GitHub 事件通知】${NEWLINE}仓库：$REPOSITORY${NEWLINE}事件类型：$EVENT_NAME${NEWLINE}操作：$EVENT_ACTION${NEWLINE}触发人：$ACTOR${NEWLINE}链接：$EVENT_URL"
+          if [ -n "$DETAIL_CONTENT" ]; then
+            MESSAGE_CONTENT="$MESSAGE_CONTENT${NEWLINE}$DETAIL_CONTENT"
+          fi
 
-          # 解析 ### 功能类别
-          类别=$(echo "$ISSUE_BODY" | awk '/### 功能类别/{f=1;next} /### /{f=0} f' | sed '/^$/d' | tr -d '\r' | head -10)
-          类别=${类别:-未填写}
-
-          # 解析 ### 功能概述
-          概述=$(echo "$ISSUE_BODY" | awk '/### 功能概述/{f=1;next} /### /{f=0} f' | sed '/^$/d' | tr -d '\r' | head -10)
-          概述=${概述:-未填写}
-
-          # 解析 ### 优先级
-          优先级=$(echo "$ISSUE_BODY" | awk '/### 优先级/{f=1;next} /### /{f=0} f' | sed '/^$/d' | tr -d '\r' | head -10)
-          优先级=${优先级:-未填写}
-
-          # 拼接消息
-          TEXT="【GitHub 创建 Issue】${NL}"
-          TEXT+="仓库：$REPOSITORY${NL}"
-          TEXT+="标题：$ISSUE_TITLE${NL}"
-          TEXT+="标签：$LABELS${NL}"
-          TEXT+="发起人：$ACTOR${NL}"
-          TEXT+="链接：$ISSUE_URL${NL}${NL}"
-          TEXT+="🔹 功能类别：$类别${NL}"
-          TEXT+="🔹 功能概述：$概述${NL}"
-          TEXT+="🔹 优先级：$优先级"
-
-          # 转义双引号 ＆ 处理换行
-          SAFE_TEXT=$(echo "$TEXT" | sed 's/"/\\"/g' | awk -v ORS='\\n' '1')
-
-          # 发送飞书
-          curl -s -X POST $FEISHU_WEBHOOK_URL \
-            -H "Content-Type: application/json" \
-            -d "{\"msg_type\":\"text\",\"content\":{\"text\":\"$SAFE_TEXT\"}}"
+          # 转义并发送消息
+          ESCAPED_CONTENT=$(echo "$MESSAGE_CONTENT" | sed 's/"/\\"/g' | tr '\n' '|')
+          ESCAPED_CONTENT=${ESCAPED_CONTENT//|/\\n}
+          MESSAGE="{\"msg_type\":\"text\",\"content\":{\"text\":\"$ESCAPED_CONTENT\"}}"
+          
+          curl -X POST -H "Content-Type: application/json" -d "$MESSAGE" "$FEISHU_WEBHOOK_URL"
+        shell: bash
