@@ -28,12 +28,14 @@ jobs:
           ISSUE_URL: ${{ github.event.issue.html_url || 'N/A' }}
           ISSUE_TITLE: ${{ github.event.issue.title || 'N/A' }}
           ISSUE_BODY: ${{ github.event.issue.body || '' }}
-          # 直接提取标签名称（用逗号分隔）
           ISSUE_LABELS: ${{ join(github.event.issue.labels.*.name, ', ') }}
           # PR/Discussion 基础字段
           PR_URL: ${{ github.event.pull_request.html_url || 'N/A' }}
           DISCUSSION_URL: ${{ github.event.discussion.html_url || 'N/A' }}
         run: |
+          # 定义通用换行符（兼容所有 Bash 环境）
+          NEWLINE=$'\n'
+          
           # 1. 初始化基础变量
           EVENT_URL=$PR_URL
           DETAIL_CONTENT=""
@@ -44,12 +46,12 @@ jobs:
             
             # 处理标签（为空则显示「无」）
             LABELS="${ISSUE_LABELS:-无}"
-            # 关键修复：用实际换行（$'\n'）替代转义字符 \n
-            DETAIL_CONTENT="标题：$ISSUE_TITLE${$'\n'}标签：$LABELS"
+            # 用预定义的 NEWLINE 变量，避免嵌套解析错误
+            DETAIL_CONTENT="标题：$ISSUE_TITLE${NEWLINE}标签：$LABELS"
             
             # 仅在创建 Issue 时解析正文模块
             if [ "$EVENT_ACTION" = "opened" ]; then
-              # 解析 ##优先级 模块（纯 Shell 实现）
+              # 解析 ##优先级 模块
               PRIORITY=$(echo "$ISSUE_BODY" | awk '/##优先级/{flag=1;next}/##/{flag=0}flag' | sed '/^$/d' | tr -d '\r' | head -n 10)
               PRIORITY="${PRIORITY:-未填写}"
               
@@ -61,27 +63,27 @@ jobs:
               SUMMARY=$(echo "$ISSUE_BODY" | awk '/##功能概述/{flag=1;next}/##/{flag=0}flag' | sed '/^$/d' | tr -d '\r' | head -n 10)
               SUMMARY="${SUMMARY:-未填写}"
               
-              # 拼接创建 Issue 专属详情（用实际换行）
-              DETAIL_CONTENT="$DETAIL_CONTENT${$'\n'}优先级：$PRIORITY${$'\n'}功能类别：$CATEGORY${$'\n'}功能概述：$SUMMARY"
+              # 拼接详情（用预定义换行符）
+              DETAIL_CONTENT="$DETAIL_CONTENT${NEWLINE}优先级：$PRIORITY${NEWLINE}功能类别：$CATEGORY${NEWLINE}功能概述：$SUMMARY"
             fi
           elif [ "$EVENT_NAME" = "discussion" ]; then
             EVENT_URL=$DISCUSSION_URL
           fi
 
-          # 3. 构建最终消息内容（用实际换行，避免转义符）
-          MESSAGE_CONTENT="【GitHub 事件通知】${$'\n'}仓库：$REPOSITORY${$'\n'}事件类型：$EVENT_NAME${$'\n'}操作：$EVENT_ACTION${$'\n'}触发人：$ACTOR${$'\n'}链接：$EVENT_URL"
+          # 3. 构建最终消息内容（无嵌套变量，避免解析错误）
+          MESSAGE_CONTENT="【GitHub 事件通知】${NEWLINE}仓库：$REPOSITORY${NEWLINE}事件类型：$EVENT_NAME${NEWLINE}操作：$EVENT_ACTION${NEWLINE}触发人：$ACTOR${NEWLINE}链接：$EVENT_URL"
           # 仅当详情不为空时拼接
           if [ -n "$DETAIL_CONTENT" ]; then
-            MESSAGE_CONTENT="$MESSAGE_CONTENT${$'\n'}$DETAIL_CONTENT"
+            MESSAGE_CONTENT="$MESSAGE_CONTENT${NEWLINE}$DETAIL_CONTENT"
           fi
 
-          # 4. 构建 JSON 消息体（自动处理换行和引号，无需手动转义）
-          MESSAGE=$(printf '{
-            "msg_type": "text",
-            "content": {
-              "text": "%s"
-            }
-          }' "$(echo "$MESSAGE_CONTENT" | sed -e 's/"/\\"/g' -e 's/\n/\\n/g' -e 's/\r//g')")
+          # 4. 构建 JSON 消息体（简化转义逻辑，兼容所有场景）
+          # 先转义特殊字符
+          ESCAPED_CONTENT=$(echo "$MESSAGE_CONTENT" | sed 's/"/\\"/g' | tr '\n' '|')
+          # 替换回换行符（飞书识别的 \n）
+          ESCAPED_CONTENT=${ESCAPED_CONTENT//|/\\n}
+          # 构建 JSON
+          MESSAGE="{\"msg_type\":\"text\",\"content\":{\"text\":\"$ESCAPED_CONTENT\"}}"
 
           # 5. 发送到飞书 Webhook
           curl -X POST \
