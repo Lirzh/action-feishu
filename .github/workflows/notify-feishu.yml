@@ -12,7 +12,7 @@ on:
   push:
     branches: [main]
   release:
-    types: [deleted,released]
+    types: [deleted, released]
 
 jobs:
   notify-feishu:
@@ -48,11 +48,10 @@ jobs:
           RELEASE_TAG: ${{ github.event.release.tag_name || 'N/A' }}
           RELEASE_NAME: ${{ github.event.release.name || '未命名' }}
           RELEASE_URL: ${{ github.event.release.html_url || 'N/A' }}
-          RELEASE_BODY: ${{ github.event.release.body || '无描述' }}
           # 通用
           MESSAGE_TITLE: ${{ secrets.FEISHU_MESSAGE_TITLE || '【GitHub 事件通知】' }}
         run: |
-          NEWLINE=$'\n'
+          NEWLINE="\n"
           
           EVENT_URL="N/A"
           DETAIL_CONTENT=""
@@ -84,19 +83,35 @@ jobs:
           
           elif [ "$EVENT_NAME" = "release" ]; then
             EVENT_URL=$RELEASE_URL
-            # 截取 Release 描述的前200个字符，避免内容过长
-            TRUNCATED_BODY=$(echo "$RELEASE_BODY" | head -n1 | cut -c1-200)
-            DETAIL_CONTENT="标签：$RELEASE_TAG${NEWLINE}名称：$RELEASE_NAME${NEWLINE}描述：$TRUNCATED_BODY"
+            DETAIL_CONTENT="标签：$RELEASE_TAG${NEWLINE}名称：$RELEASE_NAME"
           fi
 
+          # 构建消息内容
           MESSAGE_CONTENT="${MESSAGE_TITLE}${NEWLINE}仓库：$REPOSITORY${NEWLINE}事件类型：$EVENT_NAME${NEWLINE}操作：$EVENT_ACTION_DISPLAY${NEWLINE}触发人：$ACTOR${NEWLINE}链接：$EVENT_URL"
           if [ -n "$DETAIL_CONTENT" ]; then
             MESSAGE_CONTENT="$MESSAGE_CONTENT${NEWLINE}$DETAIL_CONTENT"
           fi
 
-          ESCAPED_CONTENT=$(echo "$MESSAGE_CONTENT" | sed 's/"/\\"/g' | tr '\n' '|')
-          ESCAPED_CONTENT=${ESCAPED_CONTENT//|/\\n}
-          MESSAGE="{\"msg_type\":\"text\",\"content\":{\"text\":\"$ESCAPED_CONTENT\"}}"
-          
-          curl -X POST -H "Content-Type: application/json" -d "$MESSAGE" "$FEISHU_WEBHOOK_URL"
+          # 1. 转义反斜杠
+          ESCAPED_CONTENT=$(echo "$MESSAGE_CONTENT" | sed 's/\\/\\\\/g')
+          # 2. 转义双引号
+          ESCAPED_CONTENT=$(echo "$ESCAPED_CONTENT" | sed 's/"/\\"/g')
+          # 3. 转义换行符为 \n (JSON 标准)
+          ESCAPED_CONTENT=$(echo "$ESCAPED_CONTENT" | sed ':a;N;$!ba;s/\n/\\n/g')
+          # 4. 移除控制字符
+          ESCAPED_CONTENT=$(echo "$ESCAPED_CONTENT" | tr -d '\r')
+
+          # 构建标准的 JSON 消息体
+          MESSAGE=$(jq -n \
+            --arg text "$ESCAPED_CONTENT" \
+            '{msg_type: "text", content: {text: $text}}')
+
+          # 发送请求
+          curl -X POST \
+            -H "Content-Type: application/json; charset=utf-8" \
+            -d "$MESSAGE" \
+            --max-time 10 \
+            --show-error \
+            --silent \
+            "$FEISHU_WEBHOOK_URL" || echo "发送飞书通知失败"
         shell: bash
