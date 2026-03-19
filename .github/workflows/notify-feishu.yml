@@ -33,8 +33,6 @@ jobs:
           PR_URL: ${{ github.event.pull_request.html_url || 'N/A' }}
           DISCUSSION_URL: ${{ github.event.discussion.html_url || 'N/A' }}
         run: |
-          # 1. 安装 jq 工具（必选）
-          sudo apt-get update && sudo apt-get install -y jq
 
           # 2. 初始化基础变量
           EVENT_URL=$PR_URL
