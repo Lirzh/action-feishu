@@ -1,5 +1,6 @@
 name: Notify Feishu on Events
 
+# 触发条件：监听 Issues、Discussions、Pull Requests 关键事件
 on:
   issues:
     types: [opened, edited, closed, reopened, assigned, unassigned, labeled, unlabeled]
@@ -13,13 +14,12 @@ on:
 jobs:
   notify-feishu:
     runs-on: ubuntu-latest
-    # 正确位置：before_install 放在 job 级别（与 steps 同级）
-    before_install:
-      - sudo apt-get update && sudo apt-get install -y jq
     steps:
+      # 可选：检出仓库（无需读取文件可省略）
       - name: Checkout code
         uses: actions/checkout@v4
 
+      # 核心步骤：安装 jq + 发送飞书通知（合并为一个步骤，避免语法错误）
       - name: Send notification to Feishu
         env:
           FEISHU_WEBHOOK_URL: ${{ secrets.FEISHU_WEBHOOK_URL }}
@@ -31,7 +31,10 @@ jobs:
           PR_URL: ${{ github.event.pull_request.html_url || 'N/A' }}
           DISCUSSION_URL: ${{ github.event.discussion.html_url || 'N/A' }}
         run: |
-          # 1. 确定事件链接（优先级：PR > Issue > Discussion）
+          # 1. 安装 jq 工具（GitHub Actions 标准方式：在 steps 内安装）
+          sudo apt-get update && sudo apt-get install -y jq
+
+          # 2. 确定事件链接（优先级：PR > Issue > Discussion）
           EVENT_URL=$PR_URL
           if [ "$EVENT_URL" = "N/A" ]; then
             EVENT_URL=$ISSUE_URL
@@ -40,11 +43,11 @@ jobs:
             EVENT_URL=$DISCUSSION_URL
           fi
 
-          # 2. 构建合法的飞书文本消息（转义特殊字符）
+          # 3. 构建合法的飞书文本消息（转义特殊字符）
           MESSAGE_CONTENT=$(printf "【GitHub 事件通知】\n仓库: %s\n事件类型: %s\n操作: %s\n触发人: %s\n事件链接: %s" \
             "$REPOSITORY" "$EVENT_NAME" "$EVENT_ACTION" "$ACTOR" "$EVENT_URL")
           
-          # 3. 构建符合飞书要求的 JSON 消息体（用 jq 确保格式合法）
+          # 4. 用 jq 生成合法 JSON（避免格式错误）
           MESSAGE=$(jq -n --arg content "$MESSAGE_CONTENT" '{
             "msg_type": "text",
             "content": {
@@ -52,7 +55,7 @@ jobs:
             }
           }')
 
-          # 4. 发送请求到飞书 Webhook
+          # 5. 发送请求到飞书 Webhook
           curl -X POST \
             -H "Content-Type: application/json" \
             -d "$MESSAGE" \
