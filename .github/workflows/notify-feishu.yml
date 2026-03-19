@@ -47,7 +47,7 @@ jobs:
             # 处理标签（为空则显示「无」）
             LABELS="${ISSUE_LABELS:-无}"
             # 用预定义的 NEWLINE 变量，避免嵌套解析错误
-            DETAIL_CONTENT="标题：$ISSUE_TITLE${NEWLINE}标签：$LABELS"
+            DETAIL_CONTENT="标题：$ISSUE_TITLE${NEWLINE}标签：$LABELS "
             
             # 仅在创建 Issue 时解析正文模块
             if [ "$EVENT_ACTION" = "opened" ]; then
