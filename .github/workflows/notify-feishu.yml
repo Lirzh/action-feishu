@@ -91,21 +91,7 @@ jobs:
           if [ -n "$DETAIL_CONTENT" ]; then
             MESSAGE_CONTENT="$MESSAGE_CONTENT${NEWLINE}$DETAIL_CONTENT"
           fi
-
-          # 1. 转义反斜杠
-          ESCAPED_CONTENT=$(echo "$MESSAGE_CONTENT" | sed 's/\\/\\\\/g')
-          # 2. 转义双引号
-          ESCAPED_CONTENT=$(echo "$ESCAPED_CONTENT" | sed 's/"/\\"/g')
-          # 3. 转义换行符为 \n (JSON 标准)
-          ESCAPED_CONTENT=$(echo "$ESCAPED_CONTENT" | sed ':a;N;$!ba;s/\n/\\n/g')
-          # 4. 移除控制字符
-          ESCAPED_CONTENT=$(echo "$ESCAPED_CONTENT" | tr -d '\r')
-
-          # 构建标准的 JSON 消息体
-          MESSAGE=$(jq -n \
-            --arg text "$ESCAPED_CONTENT" \
-            '{msg_type: "text", content: {text: $text}}')
-
+          
           # 发送请求
           curl -X POST \
             -H "Content-Type: application/json; charset=utf-8" \
