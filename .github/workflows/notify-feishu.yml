@@ -32,6 +32,8 @@ jobs:
           ISSUE_LABELS: ${{ join(github.event.issue.labels.*.name, ', ') }}
           PR_URL: ${{ github.event.pull_request.html_url || 'N/A' }}
           DISCUSSION_URL: ${{ github.event.discussion.html_url || 'N/A' }}
+          # ========== 新增环境变量：消息标题 ==========
+          MESSAGE_TITLE: "【GitHub 事件通知】"  # 你可以自定义这个标题，也可以改成 secrets 读取
         run: |
           # 定义通用换行符（解决之前的替换错误）
           NEWLINE=$'\n'
@@ -63,8 +65,9 @@ jobs:
             EVENT_URL=$DISCUSSION_URL
           fi
 
-          # 构建消息内容
-          MESSAGE_CONTENT="【GitHub 事件通知】${NEWLINE}仓库：$REPOSITORY${NEWLINE}事件类型：$EVENT_NAME${NEWLINE}操作：$EVENT_ACTION${NEWLINE}触发人：$ACTOR${NEWLINE}链接：$EVENT_URL"
+          # ========== 修改：使用环境变量作为标题 ==========
+          # 构建消息内容（标题从环境变量 MESSAGE_TITLE 读取）
+          MESSAGE_CONTENT="${MESSAGE_TITLE}${NEWLINE}仓库：$REPOSITORY${NEWLINE}事件类型：$EVENT_NAME${NEWLINE}操作：$EVENT_ACTION${NEWLINE}触发人：$ACTOR${NEWLINE}链接：$EVENT_URL"
           if [ -n "$DETAIL_CONTENT" ]; then
             MESSAGE_CONTENT="$MESSAGE_CONTENT${NEWLINE}$DETAIL_CONTENT"
           fi
