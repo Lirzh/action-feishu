@@ -12,7 +12,7 @@ on:
   push:
     branches: [main]
   release:
-    types: [published, created, edited, deleted, prereleased, released]
+    types: [released]
 
 jobs:
   notify-feishu:
