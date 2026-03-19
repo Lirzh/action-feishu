@@ -34,13 +34,19 @@ jobs:
           PR_URL: ${{ github.event.pull_request.html_url || 'N/A' }}
           DISCUSSION_URL: ${{ github.event.discussion.html_url || 'N/A' }}
           MESSAGE_TITLE: ${{ secrets.FEISHU_MESSAGE_TITLE || '【GitHub 事件通知】' }}
+          # Push 事件专属变量
+          PUSH_BRANCH: ${{ github.ref_name }}
+          PUSH_COMMIT_SHA: ${{ github.sha }}
+          PUSH_COMMIT_MESSAGE: ${{ github.event.head_commit.message }}
+          PUSH_COMPARE_URL: ${{ github.event.compare }}
         run: |
           # 定义通用换行符（解决之前的替换错误）
           NEWLINE=$'\n'
           
           # 初始化变量
-          EVENT_URL=$PR_URL
+          EVENT_URL="N/A"
           DETAIL_CONTENT=""
+          EVENT_ACTION_DISPLAY="${EVENT_ACTION:-推送代码}" # 给push事件默认操作名
           
           # 处理 Issues 事件
           if [ "$EVENT_NAME" = "issues" ]; then
@@ -61,12 +67,22 @@ jobs:
               
             # 拼接解析结果到详情中
             DETAIL_CONTENT="${DETAIL_CONTENT}${NEWLINE}🔹 功能类别：$CATEGORY${NEWLINE}🔹 功能概述：$SUMMARY${NEWLINE}🔹 优先级：$PRIORITY"
+          # 处理 Discussion 事件
           elif [ "$EVENT_NAME" = "discussion" ]; then
             EVENT_URL=$DISCUSSION_URL
+          # 处理 Push 事件（核心优化部分）
+          elif [ "$EVENT_NAME" = "push" ]; then
+            EVENT_URL=$PUSH_COMPARE_URL
+            # 截取短哈希（前7位），更易读
+            SHORT_SHA=${PUSH_COMMIT_SHA:0:7}
+            # 处理提交信息（截取前100字符，避免过长）
+            TRUNCATED_MSG=$(echo "$PUSH_COMMIT_MESSAGE" | head -n1 | cut -c1-100)
+            # 拼接 Push 事件详情
+            DETAIL_CONTENT="分支：$PUSH_BRANCH${NEWLINE}提交哈希：$SHORT_SHA${NEWLINE}提交信息：$TRUNCATED_MSG"
           fi
 
           # 构建消息内容（标题从环境变量 MESSAGE_TITLE 读取）
-          MESSAGE_CONTENT="${MESSAGE_TITLE}${NEWLINE}仓库：$REPOSITORY${NEWLINE}事件类型：$EVENT_NAME${NEWLINE}操作：$EVENT_ACTION${NEWLINE}触发人：$ACTOR${NEWLINE}链接：$EVENT_URL"
+          MESSAGE_CONTENT="${MESSAGE_TITLE}${NEWLINE}仓库：$REPOSITORY${NEWLINE}事件类型：$EVENT_NAME${NEWLINE}操作：$EVENT_ACTION_DISPLAY${NEWLINE}触发人：$ACTOR${NEWLINE}链接：$EVENT_URL"
           if [ -n "$DETAIL_CONTENT" ]; then
             MESSAGE_CONTENT="$MESSAGE_CONTENT${NEWLINE}$DETAIL_CONTENT"
           fi
