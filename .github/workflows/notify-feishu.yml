@@ -51,7 +51,7 @@ jobs:
           # 通用
           MESSAGE_TITLE: ${{ secrets.FEISHU_MESSAGE_TITLE || '【GitHub 事件通知】' }}
         run: |
-          NEWLINE="\n"
+          NEWLINE=$'\n'
           
           EVENT_URL="N/A"
           DETAIL_CONTENT=""
@@ -86,18 +86,14 @@ jobs:
             DETAIL_CONTENT="标签：$RELEASE_TAG${NEWLINE}名称：$RELEASE_NAME"
           fi
 
-          # 构建消息内容
           MESSAGE_CONTENT="${MESSAGE_TITLE}${NEWLINE}仓库：$REPOSITORY${NEWLINE}事件类型：$EVENT_NAME${NEWLINE}操作：$EVENT_ACTION_DISPLAY${NEWLINE}触发人：$ACTOR${NEWLINE}链接：$EVENT_URL"
           if [ -n "$DETAIL_CONTENT" ]; then
             MESSAGE_CONTENT="$MESSAGE_CONTENT${NEWLINE}$DETAIL_CONTENT"
           fi
           
-          # 发送请求
-          curl -X POST \
-            -H "Content-Type: application/json; charset=utf-8" \
-            -d "$MESSAGE" \
-            --max-time 10 \
-            --show-error \
-            --silent \
-            "$FEISHU_WEBHOOK_URL" || echo "发送飞书通知失败"
+          ESCAPED_CONTENT=$(echo "$MESSAGE_CONTENT" | sed 's/"/\\"/g' | tr '\n' '|')
+          ESCAPED_CONTENT=${ESCAPED_CONTENT//|/\\n}
+          MESSAGE="{\"msg_type\":\"text\",\"content\":{\"text\":\"$ESCAPED_CONTENT\"}}"
+          
+          curl -X POST -H "Content-Type: application/json" -d "$MESSAGE" "$FEISHU_WEBHOOK_URL"
         shell: bash
