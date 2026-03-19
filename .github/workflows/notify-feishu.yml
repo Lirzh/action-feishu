@@ -1,6 +1,5 @@
 name: Notify Feishu on Events
 
-# 触发条件：监听 Issues、Discussions、Pull Requests 关键事件
 on:
   issues:
     types: [opened, edited, closed, reopened, assigned, unassigned, labeled, unlabeled]
@@ -15,11 +14,9 @@ jobs:
   notify-feishu:
     runs-on: ubuntu-latest
     steps:
-      # 可选：检出仓库（无需读取文件可省略）
       - name: Checkout code
         uses: actions/checkout@v4
 
-      # 核心步骤：安装 jq + 发送飞书通知（合并为一个步骤，避免语法错误）
       - name: Send notification to Feishu
         env:
           FEISHU_WEBHOOK_URL: ${{ secrets.FEISHU_WEBHOOK_URL }}
@@ -27,27 +24,59 @@ jobs:
           EVENT_ACTION: ${{ github.event.action }}
           REPOSITORY: ${{ github.repository }}
           ACTOR: ${{ github.actor }}
+          # Issues 专属字段
           ISSUE_URL: ${{ github.event.issue.html_url || 'N/A' }}
+          ISSUE_TITLE: ${{ github.event.issue.title || 'N/A' }}
+          ISSUE_BODY: ${{ github.event.issue.body || '' }}
+          ISSUE_LABELS: ${{ toJSON(github.event.issue.labels) || '[]' }}
+          # PR/Discussion 基础字段
           PR_URL: ${{ github.event.pull_request.html_url || 'N/A' }}
           DISCUSSION_URL: ${{ github.event.discussion.html_url || 'N/A' }}
         run: |
-          # 1. 安装 jq 工具（GitHub Actions 标准方式：在 steps 内安装）
+          # 1. 安装 jq 工具（必选）
           sudo apt-get update && sudo apt-get install -y jq
 
-          # 2. 确定事件链接（优先级：PR > Issue > Discussion）
+          # 2. 初始化基础变量
           EVENT_URL=$PR_URL
-          if [ "$EVENT_URL" = "N/A" ]; then
+          DETAIL_CONTENT=""
+          
+          # 3. 区分事件类型处理
+          if [ "$EVENT_NAME" = "issues" ]; then
             EVENT_URL=$ISSUE_URL
-          fi
-          if [ "$EVENT_URL" = "N/A" ]; then
+            
+            # 提取 Issues 标签（格式化显示）
+            LABELS=$(echo "$ISSUE_LABELS" | jq -r '[.[] | .name] | join(", ")')
+            if [ "$LABELS" = "" ] || [ "$LABELS" = "null" ]; then
+              LABELS="无"
+            fi
+            DETAIL_CONTENT="标题：$ISSUE_TITLE\n标签：$LABELS"
+            
+            # 仅在创建 Issue 时解析正文模块
+            if [ "$EVENT_ACTION" = "opened" ]; then
+              # 解析 ##优先级 模块
+              PRIORITY=$(echo "$ISSUE_BODY" | grep -A 100 "##优先级" | grep -B 100 -E "##功能类别|##功能概述|##" | sed '/##/d' | sed '/^$/d' | tr -d '\r' | head -n 10)
+              if [ -z "$PRIORITY" ]; then PRIORITY="未填写"; fi
+              
+              # 解析 ##功能类别 模块
+              CATEGORY=$(echo "$ISSUE_BODY" | grep -A 100 "##功能类别" | grep -B 100 -E "##优先级|##功能概述|##" | sed '/##/d' | sed '/^$/d' | tr -d '\r' | head -n 10)
+              if [ -z "$CATEGORY" ]; then CATEGORY="未填写"; fi
+              
+              # 解析 ##功能概述 模块
+              SUMMARY=$(echo "$ISSUE_BODY" | grep -A 100 "##功能概述" | grep -B 100 -E "##优先级|##功能类别|##" | sed '/##/d' | sed '/^$/d' | tr -d '\r' | head -n 10)
+              if [ -z "$SUMMARY" ]; then SUMMARY="未填写"; fi
+              
+              # 拼接创建 Issue 专属详情
+              DETAIL_CONTENT="$DETAIL_CONTENT\n优先级：$PRIORITY\n功能类别：$CATEGORY\n功能概述：$SUMMARY"
+            fi
+          elif [ "$EVENT_NAME" = "discussion" ]; then
             EVENT_URL=$DISCUSSION_URL
           fi
 
-          # 3. 构建合法的飞书文本消息（转义特殊字符）
-          MESSAGE_CONTENT=$(printf "【GitHub 事件通知】\n仓库: %s\n事件类型: %s\n操作: %s\n触发人: %s\n事件链接: %s" \
-            "$REPOSITORY" "$EVENT_NAME" "$EVENT_ACTION" "$ACTOR" "$EVENT_URL")
+          # 4. 构建最终消息内容
+          MESSAGE_CONTENT=$(printf "【GitHub 事件通知】\n仓库：%s\n事件类型：%s\n操作：%s\n触发人：%s\n链接：%s\n%s" \
+            "$REPOSITORY" "$EVENT_NAME" "$EVENT_ACTION" "$ACTOR" "$EVENT_URL" "$DETAIL_CONTENT")
           
-          # 4. 用 jq 生成合法 JSON（避免格式错误）
+          # 5. 生成合法 JSON 消息体
           MESSAGE=$(jq -n --arg content "$MESSAGE_CONTENT" '{
             "msg_type": "text",
             "content": {
@@ -55,7 +84,7 @@ jobs:
             }
           }')
 
-          # 5. 发送请求到飞书 Webhook
+          # 6. 发送到飞书 Webhook
           curl -X POST \
             -H "Content-Type: application/json" \
             -d "$MESSAGE" \
