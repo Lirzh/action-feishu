@@ -1,0 +1,49 @@
+name: Notify Feishu on Events
+
+# 触发条件：监听 Issues、Discussions、Pull Requests 的所有关键事件
+on:
+  issues:
+    types: [opened, edited, closed, reopened, assigned, unassigned, labeled, unlabeled]
+  discussion:
+    types: [created, edited, deleted, closed, reopened, labeled, unlabeled]
+  pull_request:
+    types: [opened, edited, closed, reopened, assigned, unassigned, labeled, unlabeled, synchronize]
+  pull_request_review:
+    types: [submitted, edited, dismissed]
+
+jobs:
+  notify-feishu:
+    runs-on: ubuntu-latest
+    steps:
+      # 检出仓库（可选，若无需读取仓库文件可省略）
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # 构建飞书消息并发送
+      - name: Send notification to Feishu
+        env:
+          # 飞书 Webhook 地址（需在仓库设置 -> Secrets 中配置 FEISHU_WEBHOOK_URL）
+          FEISHU_WEBHOOK_URL: ${{ secrets.FEISHU_WEBHOOK_URL }}
+          # 获取事件相关信息（GitHub 内置环境变量）
+          EVENT_NAME: ${{ github.event_name }}
+          EVENT_ACTION: ${{ github.event.action }}
+          REPOSITORY: ${{ github.repository }}
+          ACTOR: ${{ github.actor }}
+          EVENT_PAYLOAD: ${{ toJSON(github.event) }}
+        run: |
+          # 构建飞书消息体（适配飞书群机器人 Webhook 格式）
+          MESSAGE=$(cat << EOF
+          {
+            "msg_type": "text",
+            "content": {
+              "text": "【GitHub 事件通知】\n仓库: $REPOSITORY\n事件类型: $EVENT_NAME\n操作: $EVENT_ACTION\n触发人: $ACTOR\n事件详情: $EVENT_PAYLOAD"
+            }
+          }
+          EOF
+          )
+
+          # 发送 POST 请求到飞书 Webhook
+          curl -X POST \
+            -H "Content-Type: application/json" \
+            -d "$MESSAGE" \
+            "$FEISHU_WEBHOOK_URL"
