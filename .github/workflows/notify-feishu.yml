@@ -10,6 +10,8 @@ on:
     types: [opened, closed, reopened]
   pull_request_review:
     types: [submitted]
+  push:
+    branches: [main] 
 
 jobs:
   notify-feishu:
@@ -25,7 +27,6 @@ jobs:
           EVENT_ACTION: ${{ github.event.action }}
           REPOSITORY: ${{ github.repository }}
           ACTOR: ${{ github.actor }}
-          # 新增 Issue Body 字段，用于解析模块
           ISSUE_URL: ${{ github.event.issue.html_url || 'N/A' }}
           ISSUE_TITLE: ${{ github.event.issue.title || 'N/A' }}
           ISSUE_BODY: ${{ github.event.issue.body || '' }}
