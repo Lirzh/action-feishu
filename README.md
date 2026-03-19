@@ -1,7 +1,7 @@
 # action-feishu - GitHub Action 飞书通知工具
 
 ## 功能介绍
-`action-feishu` 是一个轻量级的 GitHub Action 插件，能够监听仓库的各类事件（如 Issue 创建/更新、Push、PR 等），并将事件信息格式化后推送到飞书群聊（通过飞书机器人 Webhook）。
+`action-feishu` 是一个轻量级的 GitHub Action 插件，能够监听仓库的各类事件（如 Issue/Discussion 创建/更新、Push、PR、Release 等），并将事件信息格式化后推送到飞书群聊（通过飞书机器人 Webhook）。
 
 ## 快速开始
 
@@ -42,6 +42,7 @@
 | 事件 | 说明 |
 |------|------|
 | `push` | 代码推送（含分支、提交信息、提交人） |
-| `pull_request` | 合并请求（创建/更新/关闭） |
-| `issues` | Issue 操作（创建/编辑/关闭/重开） |
+| `pull_request` | 合并请求（创建/关闭/重开） |
+| `issues` | Issue 操作（创建/关闭/重开） |
+| `discussion` | Discussion  操作（创建/关闭/重开） |
 | `release` | 版本发布 |
